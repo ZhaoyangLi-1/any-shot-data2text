@@ -25,11 +25,7 @@ def main(args):
     datas = []
     with open(args.input, "r") as f:
         for line in f:
-            line = json.loads(line)
-            line_temp_input = line['input']
-            line['input'] = line['ref']
-            line['ref'] = line_temp_input
-            datas.append(line)
+            datas.append(json.loads(line))
     sampled_datas = np.random.choice(datas, size=args.sample, replace=False)
     with open(args.output, "w") as f:
         for i, line in enumerate(sampled_datas):
