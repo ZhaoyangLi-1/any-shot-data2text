@@ -879,54 +879,17 @@ def main(args):
     max_target_length = args.max_target_length
     padding = "max_length" if args.pad_to_max_length else False
 
-    # def preprocess_function(examples):
-    #     inputs = examples[args.input_column]
-    #     targets = examples[args.target_column]
-    #     # breakpoint()
-    #     inputs = [prefix + inp for inp in inputs]
-    #     model_inputs = tokenizer(
-    #         inputs, 
-    #         max_length=args.max_source_length, 
-    #         padding=padding, 
-    #         truncation=True,
-    #     )
-        # # multiple references
-        # if type(targets[0]) is not list:
-        #     # Setup the tokenizer for targets
-        #     with tokenizer.as_target_tokenizer():
-        #         labels = tokenizer(
-        #             targets, 
-        #             max_length=max_target_length, 
-        #             padding=padding, 
-        #             truncation=True,
-        #         )
-
-        #     # If we are padding here, replace all tokenizer.pad_token_id in the labels by -100 when we want to ignore
-        #     # padding in the loss.
-        #     if padding == "max_length" and args.ignore_pad_token_for_loss:
-        #         labels["input_ids"] = [
-        #             [(l if l != tokenizer.pad_token_id else -100) for l in label] for label in labels["input_ids"]
-        #         ]
-
-        #     model_inputs["labels"] = labels["input_ids"]
-        # return model_inputs
-    
     def preprocess_function(examples):
         inputs = examples[args.input_column]
         targets = examples[args.target_column]
-        
-        if isinstance(inputs[0], list):
-            inputs = [item for sublist in inputs for item in sublist]
-
+        # breakpoint()
         inputs = [prefix + inp for inp in inputs]
-        
         model_inputs = tokenizer(
             inputs, 
             max_length=args.max_source_length, 
             padding=padding, 
             truncation=True,
         )
-
         # multiple references
         if type(targets[0]) is not list:
             # Setup the tokenizer for targets
@@ -946,7 +909,6 @@ def main(args):
                 ]
 
             model_inputs["labels"] = labels["input_ids"]
-            
         return model_inputs
 
 
