@@ -85,7 +85,7 @@ def parse_args():
         "--dataset_name",
         type=str,
         default="webnlg",
-        choices=["webnlg", "dart"],
+        choices=["webnlg", "dart", "reverse-webnlg"],
         help="The name of the dataset to use.",
     )
     parser.add_argument(
