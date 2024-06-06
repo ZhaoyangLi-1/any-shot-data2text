@@ -545,8 +545,151 @@ def train(args, logger, datasets, tokenizer, model, config, accelerator):
             if early_stopping(score):
                 break
 
-def eval(args, logger, datasets, tokenizer, model, config, accelerator):
+# def eval(args, logger, datasets, tokenizer, model, config, accelerator):
 
+#     data_collator = DataCollatorWithPadding(
+#         tokenizer,
+#         pad_to_multiple_of=8 if accelerator.use_fp16 else None,
+#     )
+
+#     dataset = datasets["valid"]
+#     dataset, refs = dataset["dataset"], dataset["refs"]
+#     if not args.use_sacrebleu:
+#         refs, triples = refs["refs"], refs["triples"]
+#     dataloader = DataLoader(
+#         dataset, 
+#         collate_fn=data_collator, 
+#         batch_size=args.per_device_eval_batch_size,
+#     )
+#     model, dataloader = accelerator.prepare(model, dataloader)
+
+#     # Metric
+#     if args.use_sacrebleu:
+#         metric = load_metric("sacrebleu")
+#     else:
+#         metric = None
+
+#     # Evaluate!
+#     model.eval()
+
+#     if args.val_max_target_length is not None:
+#         max_length = args.val_max_target_length
+#     elif args.max_target_length is not None:
+#         max_length = args.max_target_length
+#     else:
+#         max_length = config.max_length
+
+#     gen_kwargs = {
+#         "max_length": max_length,
+#         "num_beams": args.num_beams,
+#     }
+
+#     if args.do_eval:
+#         logger.info("***** Running evaluation *****")
+#         logger.info(f"  Num examples = {len(dataset)}")
+#         logger.info(f"  Total evaluation batch size = {args.per_device_eval_batch_size}")
+#     output_preds = []
+#     for step, batch in enumerate(dataloader):
+#         with torch.no_grad():
+#             generated_tokens = accelerator.unwrap_model(model).generate(
+#                 batch["input_ids"],
+#                 attention_mask=batch["attention_mask"],
+#                 **gen_kwargs,
+#             )
+
+#             generated_tokens = accelerator.pad_across_processes(
+#                 generated_tokens, dim=1, pad_index=tokenizer.pad_token_id
+#             )
+
+#             generated_tokens = accelerator.gather(generated_tokens).cpu().numpy()
+
+#             if isinstance(generated_tokens, tuple):
+#                 generated_tokens = generated_tokens[0]
+#             decoded_preds = tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+
+#             output_preds += decoded_preds
+
+#     # The accelerator dataloader will return the first few items in the dataset
+#     # at the end of the epoch to keep the batches on the same size on all GPUs
+#     # Thus we need to truncate the output
+#     output_preds = output_preds[:len(refs)]
+
+#     if metric is not None:
+#         metric.add_batch(predictions=output_preds, references=refs)
+#         score = metric.compute()["score"]
+#         if args.do_eval: 
+#             logger.info(f"  Evaluation results: score={score:.2f}")
+#     # TODO: not sure its behavior in multi-processing
+#     else:
+#         dir_path = os.path.dirname(os.path.realpath(__file__)) + "/data"
+#         pred_path = f"{args.output_dir}/predictions.txt"
+#         with open(pred_path, "w", encoding="utf-8") as f:
+#             f.writelines(convert_text(s) + "\n" for s in output_preds)
+
+#         split = re.findall(r".*/(.*).json", args.valid_file)[0]
+#         if args.not_use_existing_ref:
+#             file_prefix = f"{args.output_dir}/{split}.target"
+#         else:
+#             file_prefix = os.path.dirname(os.path.realpath(__file__)) + f"/ref_data/{args.dataset_name}/{split}.target"
+
+#         if args.not_use_existing_ref:
+#             # multi-bleu.perl for evaluation
+#             with open(f"{file_prefix}_eval", "w") as f1, open(f"{file_prefix}2_eval", "w") as f2, open(f"{file_prefix}3_eval", "w") as f3:
+#                 for flag, ref in enumerate(refs):
+#                     if flag > 0:
+#                         text_prefix = "\n"
+#                     else:
+#                         text_prefix = ""
+#                     for i, f in enumerate([f1, f2, f3]):
+#                         if i < len(ref):
+#                             text = text_prefix + convert_text(ref[i])
+#                         f.write(text)
+
+#         cmd_string = f"perl {dir_path}/multi-bleu.perl -lc " \
+#                     + f"{file_prefix}_eval {file_prefix}2_eval {file_prefix}3_eval " \
+#                     + f"< {pred_path}"
+
+#         res = os.popen(cmd_string).read()
+#         score = float(re.findall(r"BLEU = (.*), .*\(.*\)", res)[0])
+
+#         if args.not_use_existing_ref:
+#             os.remove(f"{file_prefix}_eval")
+#             os.remove(f"{file_prefix}2_eval")
+#             os.remove(f"{file_prefix}3_eval")
+
+#         if args.do_eval:
+#             # meteor
+#             if args.not_use_existing_ref:
+#                 text_prefix = ""
+#                 with open(f"{file_prefix}_eval_meteor", "w") as f:
+#                     for flag, ref in enumerate(refs):
+#                         for i in range(3):
+#                             if i < len(ref):
+#                                 text = text_prefix + convert_text(ref[i])
+#                             f.write(text)
+#                             text_prefix = "\n"
+
+#             cmd_string = f"java -jar {dir_path}/utils/meteor-1.5.jar {pred_path} " \
+#                         + f"{file_prefix}_eval_meteor -l en -norm -r 3"
+#             res = os.popen(cmd_string).read()
+#             meteor_score = float(res.split()[-1]) * 100
+
+#             if args.not_use_existing_ref:
+#                 os.remove(f"{file_prefix}_eval_meteor")
+
+#             # parent
+#             _, _, f1 = parent_score(output_preds, refs, triples)
+
+#             logger.info(f"  Evaluation results: BLEU={score:.2f}, METEOR={meteor_score:.2f}, PARENT-F1={100*f1:.2f}")
+
+#         os.remove(pred_path)
+#     return score
+
+def pad_references(references, pad_token=""):
+    max_num_ref = max(len(ref) for ref in references)
+    return [ref + [pad_token] * (max_num_ref - len(ref)) for ref in references]
+
+def eval(args, logger, datasets, tokenizer, model, config, accelerator):
     data_collator = DataCollatorWithPadding(
         tokenizer,
         pad_to_multiple_of=8 if accelerator.use_fp16 else None,
@@ -554,22 +697,22 @@ def eval(args, logger, datasets, tokenizer, model, config, accelerator):
 
     dataset = datasets["valid"]
     dataset, refs = dataset["dataset"], dataset["refs"]
+    refs = pad_references(refs)  # Pad references to the same length
+
     if not args.use_sacrebleu:
         refs, triples = refs["refs"], refs["triples"]
     dataloader = DataLoader(
-        dataset, 
-        collate_fn=data_collator, 
+        dataset,
+        collate_fn=data_collator,
         batch_size=args.per_device_eval_batch_size,
     )
     model, dataloader = accelerator.prepare(model, dataloader)
 
-    # Metric
     if args.use_sacrebleu:
         metric = load_metric("sacrebleu")
     else:
         metric = None
 
-    # Evaluate!
     model.eval()
 
     if args.val_max_target_length is not None:
@@ -609,81 +752,19 @@ def eval(args, logger, datasets, tokenizer, model, config, accelerator):
 
             output_preds += decoded_preds
 
-    # The accelerator dataloader will return the first few items in the dataset
-    # at the end of the epoch to keep the batches on the same size on all GPUs
-    # Thus we need to truncate the output
     output_preds = output_preds[:len(refs)]
 
     if metric is not None:
         metric.add_batch(predictions=output_preds, references=refs)
         score = metric.compute()["score"]
-        if args.do_eval: 
-            logger.info(f"  Evaluation results: score={score:.2f}")
-    # TODO: not sure its behavior in multi-processing
-    else:
-        dir_path = os.path.dirname(os.path.realpath(__file__)) + "/data"
-        pred_path = f"{args.output_dir}/predictions.txt"
-        with open(pred_path, "w", encoding="utf-8") as f:
-            f.writelines(convert_text(s) + "\n" for s in output_preds)
-
-        split = re.findall(r".*/(.*).json", args.valid_file)[0]
-        if args.not_use_existing_ref:
-            file_prefix = f"{args.output_dir}/{split}.target"
-        else:
-            file_prefix = os.path.dirname(os.path.realpath(__file__)) + f"/ref_data/{args.dataset_name}/{split}.target"
-
-        if args.not_use_existing_ref:
-            # multi-bleu.perl for evaluation
-            with open(f"{file_prefix}_eval", "w") as f1, open(f"{file_prefix}2_eval", "w") as f2, open(f"{file_prefix}3_eval", "w") as f3:
-                for flag, ref in enumerate(refs):
-                    if flag > 0:
-                        text_prefix = "\n"
-                    else:
-                        text_prefix = ""
-                    for i, f in enumerate([f1, f2, f3]):
-                        if i < len(ref):
-                            text = text_prefix + convert_text(ref[i])
-                        f.write(text)
-
-        cmd_string = f"perl {dir_path}/multi-bleu.perl -lc " \
-                    + f"{file_prefix}_eval {file_prefix}2_eval {file_prefix}3_eval " \
-                    + f"< {pred_path}"
-
-        res = os.popen(cmd_string).read()
-        score = float(re.findall(r"BLEU = (.*), .*\(.*\)", res)[0])
-
-        if args.not_use_existing_ref:
-            os.remove(f"{file_prefix}_eval")
-            os.remove(f"{file_prefix}2_eval")
-            os.remove(f"{file_prefix}3_eval")
-
         if args.do_eval:
-            # meteor
-            if args.not_use_existing_ref:
-                text_prefix = ""
-                with open(f"{file_prefix}_eval_meteor", "w") as f:
-                    for flag, ref in enumerate(refs):
-                        for i in range(3):
-                            if i < len(ref):
-                                text = text_prefix + convert_text(ref[i])
-                            f.write(text)
-                            text_prefix = "\n"
+            logger.info(f"  Evaluation results: score={score:.2f}")
+    else:
+        # Handle the non-sacrebleu case
+        pass
 
-            cmd_string = f"java -jar {dir_path}/utils/meteor-1.5.jar {pred_path} " \
-                        + f"{file_prefix}_eval_meteor -l en -norm -r 3"
-            res = os.popen(cmd_string).read()
-            meteor_score = float(res.split()[-1]) * 100
-
-            if args.not_use_existing_ref:
-                os.remove(f"{file_prefix}_eval_meteor")
-
-            # parent
-            _, _, f1 = parent_score(output_preds, refs, triples)
-
-            logger.info(f"  Evaluation results: BLEU={score:.2f}, METEOR={meteor_score:.2f}, PARENT-F1={100*f1:.2f}")
-
-        os.remove(pred_path)
     return score
+
 
 
 def gen(args, logger, datasets, tokenizer, model, config, accelerator):
@@ -921,23 +1002,22 @@ def main(args):
     def preprocess_function(examples):
         inputs = examples[args.input_column]
         targets = examples[args.target_column]
-        
+
         if isinstance(inputs[0], list):
             inputs = [prefix.join(inp) for inp in inputs]
         else:
             inputs = [prefix + inp for inp in inputs]
-        
+
         model_inputs = tokenizer(
             inputs,
             max_length=args.max_source_length,
             padding="max_length",  # Ensure padding
             truncation=True,  # Ensure truncation
         )
-        
+
         if isinstance(targets[0], list):
-            # Flatten the targets if they are a list of lists
             targets = [choice(t) for t in targets]
-        
+
         with tokenizer.as_target_tokenizer():
             labels = tokenizer(
                 targets,
@@ -945,16 +1025,14 @@ def main(args):
                 padding="max_length",  # Ensure padding
                 truncation=True,  # Ensure truncation
             )
-        
+
         if padding == "max_length" and args.ignore_pad_token_for_loss:
             labels["input_ids"] = [
                 [(l if l != tokenizer.pad_token_id else -100) for l in label] for label in labels["input_ids"]
             ]
-        
+
         model_inputs["labels"] = labels["input_ids"]
         return model_inputs
-
-
 
     refs = [sample["ref"] for sample in raw_datasets["valid"]["data"]]
     # process for sacrebleu
