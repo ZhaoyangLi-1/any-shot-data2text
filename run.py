@@ -882,6 +882,7 @@ def main(args):
     def preprocess_function(examples):
         inputs = examples[args.input_column]
         targets = examples[args.target_column]
+        breakpoint()
         inputs = [prefix + inp for inp in inputs]
         model_inputs = tokenizer(
             inputs, 
