@@ -722,7 +722,7 @@ def gen(args, logger, datasets, tokenizer, model, config, accelerator):
     logger.info(f"  Num examples = {len(dataset)}")
     logger.info(f"  Total evaluation batch size = {args.per_device_eval_batch_size * accelerator.num_processes}")
     output_preds = []
-    for step, batch in enumerate(dataloader):
+    for step, batch in enumerate(tqdm(dataloader, desc="Processing Batches")):
             generated_tokens = accelerator.unwrap_model(model).generate(
                 batch["input_ids"],
                 attention_mask=batch["attention_mask"],
